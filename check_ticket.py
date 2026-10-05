@@ -34,7 +34,7 @@ def check_ticket_status():
                 
                 is_sold_out = sold_out_element.is_visible() or disabled_button.is_visible()
                 
-                if is_sold_out:
+                if not is_sold_out:
                     print(f"[{url}] Status: チケットの再販売・在庫を検出しました！")
                     available_urls.append(url)
                 else:
