@@ -4,8 +4,13 @@ import xml.etree.ElementTree as ET
 import requests
 import resend
 
-# 検索クエリの設定（カッコでグループ化してAND検索）
-QUERY = '(ワンダフルフィルムハーモニー OR キネコ国際映画祭 OR キネコ) (チケット OR 譲渡 OR 譲 OR 発券)'
+# 複数の検索パターンを定義（Nitter側で確実に処理させるため個別定義）
+QUERIES = [
+    'ワンダフルフィルムハーモニー',
+    'キネコ チケット',
+    'キネコ 譲渡',
+    'キネコ 譲'
+]
 
 def send_email(subject, body):
     api_key = os.environ.get("RESEND_API_KEY")
@@ -28,34 +33,22 @@ def send_email(subject, body):
     except Exception as e:
         print(f"メール送信エラー: {e}")
 
-def fetch_tweets_via_nitter(query):
+def fetch_tweets_for_query(query, nitter_instances):
     encoded_query = urllib.parse.quote(query)
-    
-    nitter_instances = [
-        "https://nitter.net",
-        "https://nitter.cz",
-        "https://nitter.it",
-        "https://nitter.download",
-        "https://nitter.projectsegfau.lt"
-    ]
-
     headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
 
     for instance in nitter_instances:
         rss_url = f"{instance}/search/rss?f=tweets&q={encoded_query}"
-        print(f"試行中: {rss_url}")
         
         try:
             response = requests.get(rss_url, headers=headers, timeout=10)
             if response.status_code == 200:
-                print(f"取得成功 ({instance})")
-                
                 root = ET.fromstring(response.content)
                 items = root.findall('.//item')
                 
-                found_posts = []
+                posts = []
                 for item in items[:5]:
                     title = item.find('title').text if item.find('title') is not None else ""
                     link = item.find('link').text if item.find('link') is not None else ""
@@ -64,23 +57,42 @@ def fetch_tweets_via_nitter(query):
                     for inst in nitter_instances:
                         x_link = x_link.replace(inst, "https://x.com")
                     
-                    found_posts.append(f"【投稿内容】\n{title}\n\nURL: {x_link}\n{'-'*30}")
-                
-                return found_posts
-            else:
-                print(f"ステータスコード: {response.status_code}")
-        except Exception as e:
-            print(f"接続失敗 ({instance}): {e}")
+                    posts.append({
+                        "link": x_link,
+                        "text": f"【投稿内容】\n{title}\n\nURL: {x_link}\n{'-'*30}"
+                    })
+                return posts
+        except Exception:
+            continue
 
     return []
 
 def main():
-    print(f"検索を開始します: {QUERY}")
-    posts = fetch_tweets_via_nitter(QUERY)
-    print(f"取得したポスト件数: {len(posts)}件")
+    nitter_instances = [
+        "https://nitter.net",
+        "https://nitter.cz",
+        "https://nitter.it",
+        "https://nitter.download",
+        "https://nitter.projectsegfau.lt"
+    ]
 
-    if posts:
-        body = "\n\n".join(posts)
+    all_posts = []
+    seen_links = set()
+
+    for query in QUERIES:
+        print(f"検索中: {query}")
+        posts = fetch_tweets_for_query(query, nitter_instances)
+        
+        # 重複する投稿を除外しながら追加
+        for post in posts:
+            if post["link"] not in seen_links:
+                seen_links.add(post["link"])
+                all_posts.append(post["text"])
+
+    print(f"取得したユニークポスト件数: {len(all_posts)}件")
+
+    if all_posts:
+        body = "\n\n".join(all_posts)
         send_email("【Xチケット通知】新しいポストが見つかりました", body)
     else:
         print("該当するポストは見つかりませんでした。")
