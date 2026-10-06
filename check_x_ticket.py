@@ -4,8 +4,8 @@ import xml.etree.ElementTree as ET
 import requests
 import resend
 
-# 検索クエリの設定
-QUERY = 'ワンダフルフィルムハーモニー OR キネコ国際映画祭 OR キネコ チケット OR 譲 OR 譲渡'
+# 検索クエリの設定（カッコでグループ化してAND検索）
+QUERY = '(ワンダフルフィルムハーモニー OR キネコ国際映画祭 OR キネコ) (チケット OR 譲渡 OR 譲 OR 発券)'
 
 def send_email(subject, body):
     api_key = os.environ.get("RESEND_API_KEY")
@@ -31,7 +31,6 @@ def send_email(subject, body):
 def fetch_tweets_via_nitter(query):
     encoded_query = urllib.parse.quote(query)
     
-    # 稼働状況の良い Nitter パブリックインスタンスのリストに更新
     nitter_instances = [
         "https://nitter.net",
         "https://nitter.cz",
@@ -53,16 +52,14 @@ def fetch_tweets_via_nitter(query):
             if response.status_code == 200:
                 print(f"取得成功 ({instance})")
                 
-                # RSS (XML) のパース
                 root = ET.fromstring(response.content)
                 items = root.findall('.//item')
                 
                 found_posts = []
-                for item in items[:5]:  # 最新5件を取得
+                for item in items[:5]:
                     title = item.find('title').text if item.find('title') is not None else ""
                     link = item.find('link').text if item.find('link') is not None else ""
                     
-                    # Nitterリンクを本家 x.com リンクに自動変換
                     x_link = link
                     for inst in nitter_instances:
                         x_link = x_link.replace(inst, "https://x.com")
