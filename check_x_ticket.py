@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 import requests
 import resend
 
-# 検索クエリの設定（「ワンダフルフィルムハーモニー」や「キネコ」のチケット・譲渡関連ポストを検索）
+# 検索クエリの設定
 QUERY = 'ワンダフルフィルムハーモニー OR キネコ国際映画祭 OR キネコ チケット OR 譲 OR 譲渡'
 
 def send_email(subject, body):
@@ -31,11 +31,13 @@ def send_email(subject, body):
 def fetch_tweets_via_nitter(query):
     encoded_query = urllib.parse.quote(query)
     
-    # 利用可能な Nitter パブリックインスタンスのリスト（予備含め複数用意）
+    # 稼働状況の良い Nitter パブリックインスタンスのリストに更新
     nitter_instances = [
-        "https://nitter.privacydev.net",
-        "https://nitter.poast.org",
-        "https://nitter.lucabased.xyz"
+        "https://nitter.net",
+        "https://nitter.cz",
+        "https://nitter.it",
+        "https://nitter.download",
+        "https://nitter.projectsegfau.lt"
     ]
 
     headers = {
