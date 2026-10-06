@@ -1,6 +1,7 @@
 import os
 import urllib.parse
 import xml.etree.ElementTree as ET
+import re
 import requests
 import resend
 
@@ -14,18 +15,27 @@ QUERIES = [
 
 HISTORY_FILE = "notified_ids.txt"
 
-def load_notified_urls():
-    """過去に通知済みのURL一覧を読み込む"""
+def extract_post_id(url):
+    """URLから投稿ID（数字）またはクリーンなURLを抽出して正規化する"""
+    # status/123456789 のような数字IDを抽出
+    match = re.search(r'/status/(\d+)', url)
+    if match:
+        return match.group(1)
+    # IDが取れない場合はパラメータを除去したURLを使用
+    return url.split('?')[0].split('#')[0].rstrip('/')
+
+def load_notified_ids():
+    """過去に通知済みのID一覧を読み込む"""
     if os.path.exists(HISTORY_FILE):
         with open(HISTORY_FILE, "r", encoding="utf-8") as f:
             return set(line.strip() for line in f if line.strip())
     return set()
 
-def save_notified_urls(new_urls):
-    """新しい通知済みURLをファイルに追記する"""
+def save_notified_ids(new_ids):
+    """新しい通知済みIDをファイルに追記する"""
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:
-        for url in new_urls:
-            f.write(f"{url}\n")
+        for post_id in new_ids:
+            f.write(f"{post_id}\n")
 
 def send_email(subject, body):
     api_key = os.environ.get("RESEND_API_KEY")
@@ -72,7 +82,11 @@ def fetch_tweets_for_query(query, nitter_instances):
                     for inst in nitter_instances:
                         x_link = x_link.replace(inst, "https://x.com")
                     
+                    # URLから固定の投稿IDを取り出す
+                    post_id = extract_post_id(x_link)
+                    
                     posts.append({
+                        "id": post_id,
                         "link": x_link,
                         "text": f"【投稿内容】\n{title}\n\nURL: {x_link}\n{'-'*30}"
                     })
@@ -91,11 +105,11 @@ def main():
         "https://nitter.projectsegfau.lt"
     ]
 
-    notified_urls = load_notified_urls()
-    print(f"過去に通知済みの件数: {len(notified_urls)}件")
+    notified_ids = load_notified_ids()
+    print(f"過去に通知済みの件数: {len(notified_ids)}件")
 
     new_posts = []
-    new_urls = []
+    new_ids = []
     seen_in_this_run = set()
 
     for query in QUERIES:
@@ -103,11 +117,11 @@ def main():
         posts = fetch_tweets_for_query(query, nitter_instances)
         
         for post in posts:
-            url = post["link"]
-            # 未通知 兼 今回の実行で未処理のものを抽出
-            if url not in notified_urls and url not in seen_in_this_run:
-                seen_in_this_run.add(url)
-                new_urls.append(url)
+            post_id = post["id"]
+            # ID単位で重複チェック
+            if post_id not in notified_ids and post_id not in seen_in_this_run:
+                seen_in_this_run.add(post_id)
+                new_ids.append(post_id)
                 new_posts.append(post["text"])
 
     print(f"新規取得ポスト件数: {len(new_posts)}件")
@@ -115,7 +129,7 @@ def main():
     if new_posts:
         body = "\n\n".join(new_posts)
         send_email("【Xチケット通知】新しいポストが見つかりました", body)
-        save_notified_urls(new_urls)
+        save_notified_ids(new_ids)
     else:
         print("新しい未通知のポストは見つかりませんでした。")
 
