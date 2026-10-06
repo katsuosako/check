@@ -25,7 +25,7 @@ ANNOUNCEMENT_KEYWORDS = [
     '公式', '特設', '配信', '放送'       # メディア・配信関連
 ]
 
-HISTORY_FILE = "notified_person_ids.txt"
+HISTORY_FILE = "notified_person_ids_K.txt"
 
 def extract_post_id(url):
     """URLから投稿ID（数字）を抽出して正規化"""
