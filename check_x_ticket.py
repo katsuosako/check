@@ -4,13 +4,28 @@ import xml.etree.ElementTree as ET
 import requests
 import resend
 
-# 複数の検索パターンを定義（Nitter側で確実に処理させるため個別定義）
+# 検索パターンの定義
 QUERIES = [
     'ワンダフルフィルムハーモニー',
     'キネコ チケット',
     'キネコ 譲渡',
     'キネコ 譲'
 ]
+
+HISTORY_FILE = "notified_ids.txt"
+
+def load_notified_urls():
+    """過去に通知済みのURL一覧を読み込む"""
+    if os.path.exists(HISTORY_FILE):
+        with open(HISTORY_FILE, "r", encoding="utf-8") as f:
+            return set(line.strip() for line in f if line.strip())
+    return set()
+
+def save_notified_urls(new_urls):
+    """新しい通知済みURLをファイルに追記する"""
+    with open(HISTORY_FILE, "a", encoding="utf-8") as f:
+        for url in new_urls:
+            f.write(f"{url}\n")
 
 def send_email(subject, body):
     api_key = os.environ.get("RESEND_API_KEY")
@@ -76,26 +91,33 @@ def main():
         "https://nitter.projectsegfau.lt"
     ]
 
-    all_posts = []
-    seen_links = set()
+    notified_urls = load_notified_urls()
+    print(f"過去に通知済みの件数: {len(notified_urls)}件")
+
+    new_posts = []
+    new_urls = []
+    seen_in_this_run = set()
 
     for query in QUERIES:
         print(f"検索中: {query}")
         posts = fetch_tweets_for_query(query, nitter_instances)
         
-        # 重複する投稿を除外しながら追加
         for post in posts:
-            if post["link"] not in seen_links:
-                seen_links.add(post["link"])
-                all_posts.append(post["text"])
+            url = post["link"]
+            # 未通知 兼 今回の実行で未処理のものを抽出
+            if url not in notified_urls and url not in seen_in_this_run:
+                seen_in_this_run.add(url)
+                new_urls.append(url)
+                new_posts.append(post["text"])
 
-    print(f"取得したユニークポスト件数: {len(all_posts)}件")
+    print(f"新規取得ポスト件数: {len(new_posts)}件")
 
-    if all_posts:
-        body = "\n\n".join(all_posts)
+    if new_posts:
+        body = "\n\n".join(new_posts)
         send_email("【Xチケット通知】新しいポストが見つかりました", body)
+        save_notified_urls(new_urls)
     else:
-        print("該当するポストは見つかりませんでした。")
+        print("新しい未通知のポストは見つかりませんでした。")
 
 if __name__ == "__main__":
     main()
