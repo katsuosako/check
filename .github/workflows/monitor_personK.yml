@@ -1,0 +1,40 @@
+name: X Person & Hashtag Monitor K
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # 5分おきに自動実行
+  workflow_dispatch:      # 手動実行ボタンを有効化
+
+jobs:
+  check-x-person:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write  # 重複防止履歴ファイルをリポジトリに書き出すため必須
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests resend
+
+      - name: Run Person Monitor
+        env:
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          NOTIFICATION_EMAIL: ${{ secrets.NOTIFICATION_EMAIL }}
+        run: python check_x_person_K.py
+
+      - name: Commit and push notification history
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add notified_person_ids_K.txt || true
+          git diff --staged --quiet || (git commit -m "Chore: Update person notification history (K)" && git push)
