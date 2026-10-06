@@ -6,9 +6,9 @@ import resend
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY")
 NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL")
 
-# 検索条件の構築:
-# 「キネコ国際映画祭」 AND (「ワンダフル フィルムハーモニー」 OR 「Wonderful Film Harmony」) AND (チケット OR 譲渡 OR 譲)
-QUERY_TICKET = 'キネコ国際映画祭 ("ワンダフル フィルムハーモニー" OR "Wonderful Film Harmony") (チケット OR 譲渡 OR 譲) -filter:replies'
+# 検索クエリの最適化:
+# 「キネコ国際映画祭」または「キネコ」または「ワンダフル フィルムハーモニー」または「Wonderful Film Harmony」のいずれかが含まれ、かつ「チケット」または「譲渡」または「譲」が入っているポスト
+QUERY_TICKET = '(キネコ国際映画祭 OR キネコ OR "ワンダフル フィルムハーモニー" OR "Wonderful Film Harmony") (チケット OR 譲渡 OR 譲) -filter:replies'
 URL_TICKET = f"https://x.com/search?q={urllib.parse.quote(QUERY_TICKET)}&f=live"
 
 def send_email_notification(tweets):
@@ -18,7 +18,7 @@ def send_email_notification(tweets):
 
     resend.api_key = RESEND_API_KEY
     
-    content = "【🎟️ キネコ国際映画祭（ワンダフル フィルムハーモニー）チケット譲渡ポスト検知】\n"
+    content = "【🎟️ キネコ国際映画祭 チケット譲渡関連ポスト検知】\n"
     content += "=========================================\n\n"
     for text in tweets:
         content += f"{text}\n-----------------------------------------\n"
@@ -48,9 +48,10 @@ def main():
         page.goto(URL_TICKET, wait_until="domcontentloaded")
 
         try:
-            page.wait_for_selector("article", timeout=8000)
+            # 検索結果のポストが表示されるのを待つ
+            page.wait_for_selector("article", timeout=10000)
         except Exception:
-            print("新規ポストが見つからないか、読み込みタイムアウトになりました。")
+            print("新規ポストが見つからないか、検索結果の読み込みタイムアウトになりました。")
             browser.close()
             return
 
@@ -65,7 +66,7 @@ def main():
         browser.close()
 
         if tweets:
-            print(f"検知結果: チケット譲渡関連ポスト {len(tweets)} 件")
+            print(f"検知結果: 関連ポスト {len(tweets)} 件")
             send_email_notification(tweets)
         else:
             print("該当する新しいポストは見つかりませんでした。")
