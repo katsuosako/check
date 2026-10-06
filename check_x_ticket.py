@@ -1,13 +1,11 @@
 import os
-import urllib.parse
+import requests
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from playwright.sync_api import sync_playwright
 
-# 記号（" や カッコ）を使わず、シンプルにスペース区切りで検索キーワードを指定
-# OR検索は OR（大文字）でつなぎます
-RAW_QUERY = 'キネコ OR キネコ国際映画祭 OR ワンダフルフィルムハーモニー チケット'
+# 検索クエリの設定
+RAW_QUERY = 'キネコ OR キネコ国際映画祭 OR "ワンダフル フィルムハーモニー" チケット'
 
 def send_email(subject, body):
     sender_email = os.environ.get("EMAIL_SENDER")
@@ -34,65 +32,78 @@ def send_email(subject, body):
     except Exception as e:
         print(f"メール送信エラー: {e}")
 
-def main():
-    # 安全にURLエンコード（クエリ形式）
-    encoded_query = urllib.parse.quote_plus(RAW_QUERY)
-    search_url = f"https://x.com/search?q={encoded_query}&f=live"
-    print(f"アクセス中: {search_url}")
+def get_guest_token(session):
+    """Xのゲストトークンを直接発行取得する"""
+    headers = {
+        'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA'
+    }
+    try:
+        res = session.post('https://api.x.com/1.1/guest/activate.json', headers=headers, timeout=10)
+        if res.status_code == 200:
+            return res.json().get('guest_token')
+        print(f"ゲストトークン取得失敗: HTTP {res.status_code}")
+    except Exception as e:
+        print(f"ゲストトークン取得エラー: {e}")
+    return None
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        context = browser.new_context(
-            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            locale="ja-JP",
-            viewport={'width': 1280, 'height': 800}
-        )
-        page = context.new_page()
+def search_x_tweets(query):
+    session = requests.Session()
+    guest_token = get_guest_token(session)
+    
+    if not guest_token:
+        print("ゲストトークンが取得できなかったため検索をスキップします。")
+        return []
 
-        try:
-            # ページへ移動
-            response = page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+    headers = {
+        'authorization': 'Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA',
+        'x-guest-token': guest_token,
+        'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+    }
+
+    params = {
+        'q': query,
+        'tweet_search_mode': 'live',
+        'count': 10,
+        'query_source': 'typed_query'
+    }
+
+    url = 'https://x.com/i/api/2/search/adaptive.json'
+    try:
+        res = session.get(url, headers=headers, params=params, timeout=15)
+        print(f"API Response Status: {res.status_code}")
+        
+        if res.status_code != 200:
+            return []
+
+        data = res.json()
+        tweets_dict = data.get('globalObjects', {}).get('tweets', {})
+        users_dict = data.get('globalObjects', {}).get('users', {})
+
+        found_posts = []
+        for tweet_id, tweet in tweets_dict.items():
+            user_id = tweet.get('user_id_str')
+            user_info = users_dict.get(user_id, {})
+            screen_name = user_info.get('screen_name', 'unknown')
+            text = tweet.get('full_text', '')
             
-            # ステータスコードの確認
-            if response:
-                print(f"HTTP Status: {response.status}")
+            post_url = f"https://x.com/{screen_name}/status/{tweet_id}"
+            found_posts.append(f"【@{screen_name}】\n{text}\nURL: {post_url}\n{'-'*30}")
 
-            # 描画待ち
-            page.wait_for_timeout(8000)
+        return found_posts
+    except Exception as e:
+        print(f"検索リクエストエラー: {e}")
+        return []
 
-            # ポスト要素（article）を取得
-            articles = page.query_selector_all('article')
-            print(f"取得したポスト件数: {len(articles)}件")
+def main():
+    print(f"検索を開始します: {RAW_QUERY}")
+    posts = search_x_tweets(RAW_QUERY)
+    print(f"取得したポスト件数: {len(posts)}件")
 
-            if not articles:
-                body_text = page.inner_text('body')
-                if "ログイン" in body_text or "Log in" in body_text:
-                    print("※ログイン要求画面が表示されています。")
-                else:
-                    print("※該当するポストが見つかりませんでした。")
-                return
-
-            found_posts = []
-            for i, article in enumerate(articles[:5]):
-                text = article.inner_text()
-                links = article.query_selector_all('a')
-                post_url = ""
-                for link in links:
-                    href = link.get_attribute('href')
-                    if href and '/status/' in href:
-                        post_url = f"https://x.com{href.split('?')[0]}"
-                        break
-                
-                found_posts.append(f"【ポスト {i+1}】\n{text}\nURL: {post_url}\n{'-'*30}")
-
-            if found_posts:
-                body = "\n\n".join(found_posts)
-                send_email("【Xチケット通知】新しいポストが見つかりました", body)
-
-        except Exception as e:
-            print(f"エラーが発生しました: {e}")
-        finally:
-            browser.close()
+    if posts:
+        body = "\n\n".join(posts[:5])  # 最新5件を送信
+        send_email("【Xチケット通知】新しいポストが見つかりました", body)
+    else:
+        print("該当するポストは見つかりませんでした。")
 
 if __name__ == "__main__":
     main()
