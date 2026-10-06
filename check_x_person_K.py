@@ -12,8 +12,8 @@ import resend
 QUERIES = [
     '"小原好美" filter:verified',
     '"加隈亜衣" filter:verified',
-    '#小原好美 filter:verified',
-    '#加隈亜衣 filter:verified'
+    '"#小原好美" filter:verified',
+    '"#加隈亜衣" filter:verified'
 ]
 
 # 判定キーワードリスト（以下のいずれかが本文に含まれている場合のみ通過）
