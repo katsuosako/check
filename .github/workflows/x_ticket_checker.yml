@@ -21,8 +21,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install playwright resend
-          playwright install --with-deps chromium
+          pip install requests resend
 
       - name: Run Ticket Monitor
         env:
