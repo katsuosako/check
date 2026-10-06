@@ -8,7 +8,7 @@ NOTIFICATION_EMAIL = os.environ.get("NOTIFICATION_EMAIL")
 
 # 検索クエリの最適化:
 # 「キネコ国際映画祭」または「キネコ」または「ワンダフル フィルムハーモニー」または「Wonderful Film Harmony」のいずれかが含まれ、かつ「チケット」または「譲渡」または「譲」が入っているポスト
-QUERY_TICKET = '(キネコ国際映画祭 OR キネコ OR "ワンダフル フィルムハーモニー" OR "Wonderful Film Harmony") (チケット OR 譲渡 OR 譲) -filter:replies'
+QUERY_TICKET = '(キネコ国際映画祭 OR キネコ OR "ワンダフル フィルムハーモニー" OR "Wonderful Film Harmony") (チケット OR 譲渡 OR 譲 OR 交換) -filter:replies'
 URL_TICKET = f"https://x.com/search?q={urllib.parse.quote(QUERY_TICKET)}&f=live"
 
 def send_email_notification(tweets):
