@@ -5,9 +5,9 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from playwright.sync_api import sync_playwright
 
-# 検索条件の設定
-# X（Twitter）検索クエリ
-RAW_QUERY = '(キネコ国際映画祭 OR キネコ OR "ワンダフル フィルムハーモニー") (チケット OR 譲 OR 譲渡 OR 探 OR 求め)'
+# 記号（" や カッコ）を使わず、シンプルにスペース区切りで検索キーワードを指定
+# OR検索は OR（大文字）でつなぎます
+RAW_QUERY = 'キネコ OR キネコ国際映画祭 OR ワンダフルフィルムハーモニー チケット'
 
 def send_email(subject, body):
     sender_email = os.environ.get("EMAIL_SENDER")
@@ -35,13 +35,12 @@ def send_email(subject, body):
         print(f"メール送信エラー: {e}")
 
 def main():
-    # URLエンコード処理
-    encoded_query = urllib.parse.quote(RAW_QUERY)
+    # 安全にURLエンコード（クエリ形式）
+    encoded_query = urllib.parse.quote_plus(RAW_QUERY)
     search_url = f"https://x.com/search?q={encoded_query}&f=live"
     print(f"アクセス中: {search_url}")
 
     with sync_playwright() as p:
-        # 一般的なデスクトップChromeのUser-Agentを設定して検出を回避
         browser = p.chromium.launch(headless=True)
         context = browser.new_context(
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -51,10 +50,14 @@ def main():
         page = context.new_page()
 
         try:
-            # ページへ移動（タイムアウト60秒）
-            page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
+            # ページへ移動
+            response = page.goto(search_url, wait_until="domcontentloaded", timeout=60000)
             
-            # Xの検索描画をしっかり待つ（8秒）
+            # ステータスコードの確認
+            if response:
+                print(f"HTTP Status: {response.status}")
+
+            # 描画待ち
             page.wait_for_timeout(8000)
 
             # ポスト要素（article）を取得
@@ -62,21 +65,16 @@ def main():
             print(f"取得したポスト件数: {len(articles)}件")
 
             if not articles:
-                # 画面のテキストを取得してデバッグ情報を出力
                 body_text = page.inner_text('body')
                 if "ログイン" in body_text or "Log in" in body_text:
-                    print("※ログイン要求画面が表示されている可能性があります。")
+                    print("※ログイン要求画面が表示されています。")
                 else:
-                    print("※ポストが0件、または読み込みに失敗しました。")
-                
-                browser.close()
+                    print("※該当するポストが見つかりませんでした。")
                 return
 
             found_posts = []
             for i, article in enumerate(articles[:5]):
                 text = article.inner_text()
-                
-                # ポストのURLを特定
                 links = article.query_selector_all('a')
                 post_url = ""
                 for link in links:
