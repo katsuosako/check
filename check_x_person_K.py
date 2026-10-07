@@ -7,13 +7,18 @@ import resend
 
 # =========================================================
 # 検索設定（完全一致 ＋ 認証アカウント限定）
-# ※ filter:links は不使用（画像メインのサイン告知などを逃さないため）
 # =========================================================
 QUERIES = [
     '"小原好美" filter:verified',
+    '#小原好美 filter:verified',
     '"加隈亜衣" filter:verified',
-    '"#小原好美" filter:verified',
-    '"#加隈亜衣" filter:verified'
+    '#加隈亜衣 filter:verified'
+]
+
+# 除外したいユーザーのIDリスト（@を含めずに記述）
+EXCLUDE_USERS = [
+    "MALMUNIA",
+    "yukki_tcg"
 ]
 
 # 判定キーワードリスト（以下のいずれかが本文に含まれている場合のみ通過）
@@ -101,6 +106,13 @@ def fetch_tweets_for_query(query, nitter_instances):
                     title = item.find('title').text if item.find('title') is not None else ""
                     link = item.find('link').text if item.find('link') is not None else ""
                     
+                    # URLからユーザーIDを抽出して除外チェック（大文字小文字を区別せず判定）
+                    url_match = re.search(r'https?://[^/]+/([^/]+)/status', link)
+                    if url_match:
+                        author_id = url_match.group(1).lower()
+                        if author_id in [u.lower() for u in EXCLUDE_USERS]:
+                            continue
+
                     # 告知・サイン関連ワードが含まれていないポストは除外
                     if not is_official_announcement(title):
                         continue
@@ -156,7 +168,4 @@ def main():
         send_email("【X公式・告知通知】サイン・お知らせポストが見つかりました", body)
         save_notified_ids(new_ids)
     else:
-        print("新しい未通知のポストは見つかりませんでした。")
-
-if __name__ == "__main__":
-    main()
+        print("新しい未通知のポストは見つかりませんでした
