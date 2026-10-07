@@ -6,13 +6,13 @@ import requests
 import resend
 
 # =========================================================
-# 検索設定（完全一致 ＋ 認証アカウント限定）
+# 検索設定（完全一致 ＋ 認証アカウント限定 ＋ リプライ除外）
 # =========================================================
 QUERIES = [
-    '"小原好美" filter:verified',
-    '#小原好美 filter:verified',
-    '"加隈亜衣" filter:verified',
-    '#加隈亜衣 filter:verified'
+    '"小原好美" filter:verified -filter:replies',
+    '#小原好美 filter:verified -filter:replies',
+    '"加隈亜衣" filter:verified -filter:replies',
+    '#加隈亜衣 filter:verified -filter:replies'
 ]
 
 # 除外したいユーザーのIDリスト（@を含めずに記述）
@@ -54,13 +54,16 @@ def save_notified_ids(new_ids):
 
 def is_official_announcement(title):
     """一般の日常投稿やリプライを除外し、告知・サイン関連ポストのみ通過させる"""
-    # 1. 一般ユーザー同士のリプライ（@アカウント名 で始まるもの）を除外
-    if title.strip().startswith("@"):
+    text = title.strip()
+    
+    # 1. リプライ投稿の除外
+    # Nitter形式（"R to @user:"）および 標準形式（"@user"）のどちらも除外する
+    if text.startswith("@") or re.match(r'^R\s+to\s+@', text, re.IGNORECASE):
         return False
     
     # 2. 告知・サイン関連のキーワードが含まれているかチェック
     for kw in ANNOUNCEMENT_KEYWORDS:
-        if kw in title:
+        if kw in text:
             return True
             
     return False
@@ -113,7 +116,7 @@ def fetch_tweets_for_query(query, nitter_instances):
                         if author_id in [u.lower() for u in EXCLUDE_USERS]:
                             continue
 
-                    # 告知・サイン関連ワードが含まれていないポストは除外
+                    # 告知・サイン関連ワードが含まれていないポスト、およびリプライは除外
                     if not is_official_announcement(title):
                         continue
 
