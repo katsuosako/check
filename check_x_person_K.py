@@ -168,4 +168,7 @@ def main():
         send_email("【X公式・告知通知】サイン・お知らせポストが見つかりました", body)
         save_notified_ids(new_ids)
     else:
-        print("新しい未通知のポストは見つかりませんでした
+        print("新しい未通知のポストは見つかりませんでした。")
+
+if __name__ == "__main__":
+    main()
