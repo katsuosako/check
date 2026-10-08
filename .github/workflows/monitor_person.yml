@@ -1,8 +1,8 @@
-name: X Person & Hashtag Monitor
+name: X Person Monitor (Sato)
 
 on:
   schedule:
-    - cron: '*/5 * * * *'  # 5分毎に実行（お好みに応じて変更可能）
+    - cron: '*/5 * * * *'  # 5分おきに実行
   workflow_dispatch:
 
 jobs:
@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
 
     permissions:
-      contents: write  # リポジトリへ履歴ファイルを保存するために必須
+      contents: write  # 履歴ファイルをリポジトリへ自動コミットするために必須
 
     steps:
       - name: Check out repository
@@ -37,4 +37,4 @@ jobs:
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
           git add notified_person_ids.txt || true
-          git diff --staged --quiet || (git commit -m "Chore: Update person notification history" && git push)
+          git diff --staged --quiet || (git commit -m "Chore: Update notification history [skip ci]" && git push)
