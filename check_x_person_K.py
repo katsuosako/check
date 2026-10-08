@@ -6,7 +6,7 @@ import requests
 import resend
 
 # =========================================================
-# 検索設定（完全一致 ＋ 認証アカウント限定 ＋ リプライ除外）
+# 検索設定（完全一致 ＋ 認証アカウント限定 ＋ リプライ/RT除外）
 # =========================================================
 QUERIES = [
     '"小原好美" filter:verified -filter:replies',
@@ -14,6 +14,9 @@ QUERIES = [
     '"加隈亜衣" filter:verified -filter:replies',
     '#加隈亜衣 filter:verified -filter:replies'
 ]
+
+# 監視対象の名前リスト（本文に含まれているかPython側で再チェック）
+TARGET_NAMES = ['小原好美', '加隈亜衣']
 
 # 除外したいユーザーのIDリスト（@を含めずに記述）
 EXCLUDE_USERS = [
@@ -53,20 +56,25 @@ def save_notified_ids(new_ids):
             f.write(f"{post_id}\n")
 
 def is_official_announcement(title):
-    """一般の日常投稿やリプライを除外し、告知・サイン関連ポストのみ通過させる"""
+    """リプライ・RTを除外し、対象者の名前と告知キーワードの両方が含まれるポストのみ通過させる"""
     text = title.strip()
     
-    # 1. リプライ投稿の除外
-    # Nitter形式（"R to @user:"）および 標準形式（"@user"）のどちらも除外する
-    if text.startswith("@") or re.match(r'^R\s+to\s+@', text, re.IGNORECASE):
+    # 1. リプライ投稿・RT（リツイート）投稿の除外
+    # Nitter形式の "R to @" や "RT by @"、標準形式の "@" で始まるものを弾く
+    if text.startswith("@") or re.match(r'^(R\s+to\s+@|RT\s+by\s+@)', text, re.IGNORECASE):
         return False
     
-    # 2. 告知・サイン関連のキーワードが含まれているかチェック
-    for kw in ANNOUNCEMENT_KEYWORDS:
-        if kw in text:
-            return True
+    # 2. 対象人物の名前（小原好美、加隈亜衣）が本文に含まれているかチェック
+    has_target_name = any(name in text for name in TARGET_NAMES)
+    if not has_target_name:
+        return False
+
+    # 3. 告知・サイン関連のキーワードが含まれているかチェック
+    has_announcement_kw = any(kw in text for kw in ANNOUNCEMENT_KEYWORDS)
+    if not has_announcement_kw:
+        return False
             
-    return False
+    return True
 
 def send_email(subject, body):
     api_key = os.environ.get("RESEND_API_KEY")
@@ -116,7 +124,7 @@ def fetch_tweets_for_query(query, nitter_instances):
                         if author_id in [u.lower() for u in EXCLUDE_USERS]:
                             continue
 
-                    # 告知・サイン関連ワードが含まれていないポスト、およびリプライは除外
+                    # 名前・告知ワードの判定に失敗した投稿、およびRT/リプライは除外
                     if not is_official_announcement(title):
                         continue
 
