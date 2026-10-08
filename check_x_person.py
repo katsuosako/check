@@ -6,17 +6,36 @@ import requests
 import resend
 
 # =========================================================
-# 検索設定（必要に応じてキーワードやハッシュタグを変更・追加してください）
+# 検索設定（完全一致 ＋ 認証アカウント限定 ＋ リプライ/RT除外）
 # =========================================================
 QUERIES = [
-    '"佐藤未奈子"',             # 人物名（プレーンテキスト）
-    '"#佐藤未奈子"',            # ハッシュタグ
+    '"佐藤未奈子" filter:verified -filter:replies',
+    '#佐藤未奈子 filter:verified -filter:replies'
 ]
 
-HISTORY_FILE = "notified_person_ids.txt"
+# 監視対象の名前リスト（本文に含まれているかPython側で再チェック）
+TARGET_NAMES = ['佐藤未奈子']
+
+# 除外したいユーザーのIDリスト（@を含めずに記述）
+EXCLUDE_USERS = [
+    "MALMUNIA",
+    "yukki_tcg"
+]
+
+# 判定キーワードリスト（以下のいずれかが本文に含まれている場合のみ通過）
+ANNOUNCEMENT_KEYWORDS = [
+    'サイン', '色紙', '直筆',          # サイン関連
+    'お知らせ', '情報解禁', '解禁',     # 告知関連
+    '出演', '決定', '開催', '発売',      # イベント・出演・リリース関連
+    'プレゼント', 'キャンペーン', 'フォロー', 'RT', # 企画・抽選関連
+    '公式', '特設', '配信', '放送'       # メディア・配信関連
+]
+
+# 佐藤未奈子さん用の履歴保存ファイル名
+HISTORY_FILE = "notified_person_ids_S.txt"
 
 def extract_post_id(url):
-    """URLから投稿ID（数字）を抽出して正規化（IDが取れない場合はクリーンなURL）"""
+    """URLから投稿ID（数字）を抽出して正規化"""
     match = re.search(r'/status/(\d+)', url)
     if match:
         return match.group(1)
@@ -35,6 +54,27 @@ def save_notified_ids(new_ids):
         for post_id in new_ids:
             f.write(f"{post_id}\n")
 
+def is_official_announcement(title):
+    """リプライ・RTを除外し、対象者の名前と告知キーワードの両方が含まれるポストのみ通過させる"""
+    text = title.strip()
+    
+    # 1. リプライ投稿・RT（リツイート）投稿の除外
+    # Nitter形式の "R to @" や "RT by @"、標準形式の "@" で始まるものを弾く
+    if text.startswith("@") or re.match(r'^(R\s+to\s+@|RT\s+by\s+@)', text, re.IGNORECASE):
+        return False
+    
+    # 2. 対象人物の名前（佐藤未奈子）が本文に含まれているかチェック
+    has_target_name = any(name in text for name in TARGET_NAMES)
+    if not has_target_name:
+        return False
+
+    # 3. 告知・サイン関連のキーワードが含まれているかチェック
+    has_announcement_kw = any(kw in text for kw in ANNOUNCEMENT_KEYWORDS)
+    if not has_announcement_kw:
+        return False
+            
+    return True
+
 def send_email(subject, body):
     api_key = os.environ.get("RESEND_API_KEY")
     to_email = os.environ.get("NOTIFICATION_EMAIL")
@@ -47,7 +87,7 @@ def send_email(subject, body):
 
     try:
         resend.Emails.send({
-            "from": "Person Monitor <onboarding@resend.dev>",
+            "from": "Official Person Monitor <onboarding@resend.dev>",
             "to": [to_email],
             "subject": subject,
             "text": body,
@@ -72,10 +112,21 @@ def fetch_tweets_for_query(query, nitter_instances):
                 items = root.findall('.//item')
                 
                 posts = []
-                for item in items[:5]:  # 最新5件を取得
+                for item in items[:5]:
                     title = item.find('title').text if item.find('title') is not None else ""
                     link = item.find('link').text if item.find('link') is not None else ""
                     
+                    # URLからユーザーIDを抽出して除外チェック（大文字小文字を区別せず判定）
+                    url_match = re.search(r'https?://[^/]+/([^/]+)/status', link)
+                    if url_match:
+                        author_id = url_match.group(1).lower()
+                        if author_id in [u.lower() for u in EXCLUDE_USERS]:
+                            continue
+
+                    # 名前・告知ワードの判定に失敗した投稿、およびRT/リプライは除外
+                    if not is_official_announcement(title):
+                        continue
+
                     x_link = link
                     for inst in nitter_instances:
                         x_link = x_link.replace(inst, "https://x.com")
@@ -85,7 +136,7 @@ def fetch_tweets_for_query(query, nitter_instances):
                     posts.append({
                         "id": post_id,
                         "link": x_link,
-                        "text": f"【投稿内容】\n{title}\n\nURL: {x_link}\n{'-'*30}"
+                        "text": f"【公式・告知ポスト】\n{title}\n\nURL: {x_link}\n{'-'*30}"
                     })
                 return posts
         except Exception:
@@ -94,7 +145,6 @@ def fetch_tweets_for_query(query, nitter_instances):
     return []
 
 def main():
-    # 稼働状況の良い Nitter パブリックインスタンス一覧
     nitter_instances = [
         "https://nitter.net",
         "https://nitter.cz",
@@ -116,7 +166,6 @@ def main():
         
         for post in posts:
             post_id = post["id"]
-            # 未通知 兼 今回の実行内で未処理のものを抽出（重複防止）
             if post_id not in notified_ids and post_id not in seen_in_this_run:
                 seen_in_this_run.add(post_id)
                 new_ids.append(post_id)
@@ -126,7 +175,7 @@ def main():
 
     if new_posts:
         body = "\n\n".join(new_posts)
-        send_email("【X通知】指定キーワードの新しいポストが見つかりました", body)
+        send_email("【X公式・告知通知】サイン・お知らせポストが見つかりました（佐藤未奈子）", body)
         save_notified_ids(new_ids)
     else:
         print("新しい未通知のポストは見つかりませんでした。")
